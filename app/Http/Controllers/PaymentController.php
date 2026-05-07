@@ -20,11 +20,13 @@ class PaymentController extends Controller
             env('AUTH_URL') . '/oauth/token',
             [
                 'grant_type' => 'client_credentials',
-                'client_id' => config('AUTH_CLIENT_ID'),
-                'client_secret' => config('AUTH_CLIENT_SECRET'),
+                'client_id' => env('AUTH_CLIENT_ID'),
+                'client_secret' => env('AUTH_CLIENT_SECRET'),
                 'scope' => '',
             ]
         );
+        
+        dd($response->json());
 
         if (!$response->ok()) {
             throw new \Exception('Service token olishda xatolik');
