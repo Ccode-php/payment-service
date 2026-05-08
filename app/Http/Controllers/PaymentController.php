@@ -25,8 +25,6 @@ class PaymentController extends Controller
                 'scope' => '',
             ]
         );
-        
-        dd($response->json());
 
         if (!$response->ok()) {
             throw new \Exception('Service token olishda xatolik');
