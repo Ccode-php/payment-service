@@ -84,12 +84,18 @@ class PaymentController extends Controller
         ]);
 
         // 4️⃣ Order paid qilamiz (internal)
-        Http::withToken($serviceToken)->post(
+        $res = Http::withToken($serviceToken)->post(
             env('ORDER_SERVICE_URL') .
                 '/api/internal/orders/' .
                 $payment->order_id .
                 '/paid'
         );
+        
+        dd([
+            'status' => $res->status(),
+            'body' => $res->body(),
+            'json' => $res->json(),
+        ]);
 
         return response()->json([
             'message' => 'Payment success',
