@@ -39,20 +39,15 @@ class PaymentController extends Controller
     |--------------------------------------------------------------------------
     */
     public function store(Request $request)
-{
-    try {
-
+    {
         $data = $request->validate([
             'order_id' => 'required|integer',
             'amount'   => 'required|numeric|min:1',
         ]);
 
-        \Log::info('STEP 1');
-
         $serviceToken = $this->getServiceToken();
 
-        \Log::info('STEP 2');
-
+        // 1️⃣ Order totalni internal endpointdan olamiz
         $orderRes = Http::withToken($serviceToken)->get(
             env('ORDER_SERVICE_URL') .
                 '/api/internal/orders/' .
@@ -60,21 +55,21 @@ class PaymentController extends Controller
                 '/total'
         );
 
-        \Log::info('STEP 3', [
-            'status' => $orderRes->status(),
-            'body' => $orderRes->body(),
-        ]);
-
         if (!$orderRes->ok()) {
-            return response()->json([
-                'error' => 'Order not found'
-            ], 404);
+            return response()->json(['error' => 'Order not found'], 404);
         }
 
         $order = $orderRes->json();
 
-        \Log::info('STEP 4');
+        if ((float)$data['amount'] !== (float)$order['total']) {
+            return response()->json([
+                'error' => 'Payment amount mismatch',
+                'expected' => $order['total'],
+                'sent' => $data['amount'],
+            ], 422);
+        }
 
+        // 2️⃣ Payment yaratamiz
         $payment = Payment::create([
             'order_id' => $data['order_id'],
             'amount'   => $order['total'],
@@ -82,43 +77,29 @@ class PaymentController extends Controller
             'provider' => 'fake',
         ]);
 
-        \Log::info('STEP 5');
-
+        // 3️⃣ Fake gateway success
         $payment->update([
             'status' => 'success',
             'transaction_id' => Str::uuid(),
         ]);
 
-        \Log::info('STEP 6');
-
+        // 4️⃣ Order paid qilamiz (internal)
         $res = Http::withToken($serviceToken)->post(
             env('ORDER_SERVICE_URL') .
                 '/api/internal/orders/' .
                 $payment->order_id .
                 '/paid'
         );
-
-        \Log::info('STEP 7', [
+        
+        dd([
             'status' => $res->status(),
             'body' => $res->body(),
+            'json' => $res->json(),
         ]);
 
         return response()->json([
             'message' => 'Payment success',
             'payment' => $payment
         ], 201);
-
-    } catch (\Throwable $e) {
-
-        \Log::error('PAYMENT ERROR', [
-            'message' => $e->getMessage(),
-            'line' => $e->getLine(),
-            'file' => $e->getFile(),
-        ]);
-
-        return response()->json([
-            'error' => $e->getMessage()
-        ], 500);
     }
-}
 }
