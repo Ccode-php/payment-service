@@ -91,11 +91,12 @@ class PaymentController extends Controller
                 '/paid'
         );
         
-        dd([
-            'status' => $res->status(),
-            'body' => $res->body(),
-            'json' => $res->json(),
-        ]);
+        if (!$res->ok()) {
+            return response()->json([
+                'error' => 'Order paid failed',
+                'body' => $res->json(),
+            ], 500);
+        }
 
         return response()->json([
             'message' => 'Payment success',
