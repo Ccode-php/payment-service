@@ -47,7 +47,6 @@ class PaymentController extends Controller
 
         $serviceToken = $this->getServiceToken();
 
-        // 1️⃣ Order totalni internal endpointdan olamiz
         $orderRes = Http::withToken($serviceToken)->get(
             env('ORDER_SERVICE_URL') .
                 '/api/internal/orders/' .
@@ -56,20 +55,39 @@ class PaymentController extends Controller
         );
 
         if (!$orderRes->ok()) {
-            return response()->json(['error' => 'Order not found'], 404);
+            return response()->json([
+                'error' => 'Order not found'
+            ], 404);
         }
 
         $order = $orderRes->json();
 
+        $user = $request->get('auth_user');
+
+        if ($order['user_id'] != $user['id']) {
+            return response()->json([
+                'error' => 'Forbidden'
+            ], 403);
+        }
+
+        if ($order['status'] !== 'pending') {
+            return response()->json([
+                'error' => 'Order already processed'
+            ], 400);
+        }
+
         if ((float)$data['amount'] !== (float)$order['total']) {
             return response()->json([
                 'error' => 'Payment amount mismatch',
-                'expected' => $order['total'],
-                'sent' => $data['amount'],
             ], 422);
         }
 
-        // 2️⃣ Payment yaratamiz
+        /*
+    |--------------------------------------------------------------------------
+    | PAYMENT CREATE
+    |--------------------------------------------------------------------------
+    */
+
         $payment = Payment::create([
             'order_id' => $data['order_id'],
             'amount'   => $order['total'],
@@ -77,26 +95,47 @@ class PaymentController extends Controller
             'provider' => 'fake',
         ]);
 
-        // 3️⃣ Fake gateway success
-        $payment->update([
-            'status' => 'success',
-            'transaction_id' => Str::uuid(),
-        ]);
+        /*
+    |--------------------------------------------------------------------------
+    | ORDER PAID + STOCK DECREASE
+    |--------------------------------------------------------------------------
+    */
 
-        // 4️⃣ Order paid qilamiz (internal)
         $res = Http::withToken($serviceToken)->post(
             env('ORDER_SERVICE_URL') .
                 '/api/internal/orders/' .
                 $payment->order_id .
                 '/paid'
         );
-        
+
+        /*
+    |--------------------------------------------------------------------------
+    | FAILED
+    |--------------------------------------------------------------------------
+    */
+
         if (!$res->ok()) {
+
+            $payment->update([
+                'status' => 'failed'
+            ]);
+
             return response()->json([
                 'error' => 'Order paid failed',
                 'body' => $res->json(),
             ], 500);
         }
+
+        /*
+    |--------------------------------------------------------------------------
+    | SUCCESS
+    |--------------------------------------------------------------------------
+    */
+
+        $payment->update([
+            'status' => 'success',
+            'transaction_id' => Str::uuid(),
+        ]);
 
         return response()->json([
             'message' => 'Payment success',
